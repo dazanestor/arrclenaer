@@ -7,4 +7,6 @@ services:
       - RADARR_API_KEY=TU_API_KEY
       - YEAR_THRESHOLD=2024
       - RUN_INTERVAL_HOURS=12
+      - TRANSMISSION_URL=
+      - TRANSMISSION_API_KEY
     restart: unless-stopped
