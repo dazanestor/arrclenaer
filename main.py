@@ -46,35 +46,33 @@ def add_to_exclusion(tmdb_id, title, year):
     if response.status_code not in (200, 201):
         logging.warning(f"Error al excluir '{title}': {response.text}")
 
-def get_transmission_session_id():
-    response = requests.post(
-        f"{TRANSMISSION_URL}/transmission/rpc",
-        auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD)
-    )
-    return response.headers.get("X-Transmission-Session-Id")
-
 def cancel_torrent_download(title):
     logging.info(f"Comprobando si '{title}' está en descarga en Transmission...")
-    session_id = get_transmission_session_id()
-    if not session_id:
-        logging.warning("No se pudo obtener el Session ID de Transmission.")
-        return
 
-    headers = {"X-Transmission-Session-Id": session_id}
-    response = requests.post(
-        f"{TRANSMISSION_URL}/transmission/rpc",
-        json={
-            "method": "torrent-get",
-            "arguments": {"fields": ["id", "name"]}
-        },
-        auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD),
-        headers=headers
-    )
+    payload = {
+        "method": "torrent-get",
+        "arguments": {"fields": ["id", "name"]}
+    }
+
+    auth = HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD)
+    response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json=payload, auth=auth)
 
     if response.status_code == 409:
-        logging.warning("Session ID de Transmission inválido.")
-        return
-    elif response.status_code != 200:
+        session_id = response.headers.get("X-Transmission-Session-Id")
+        if not session_id:
+            logging.warning("No se pudo obtener el Session ID de Transmission.")
+            return
+
+        headers = {"X-Transmission-Session-Id": session_id}
+        response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json=payload, auth=auth, headers=headers)
+
+        if response.status_code != 200:
+            logging.warning("No se pudo obtener la lista de torrents de Transmission tras reintento.")
+            return
+    elif response.status_code == 200:
+        session_id = response.headers.get("X-Transmission-Session-Id")
+        headers = {"X-Transmission-Session-Id": session_id}
+    else:
         logging.warning("No se pudo obtener la lista de torrents de Transmission.")
         return
 
@@ -93,7 +91,7 @@ def cancel_torrent_download(title):
                         "delete-local-data": True
                     }
                 },
-                auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD),
+                auth=auth,
                 headers=headers
             )
             if response.status_code == 200:
