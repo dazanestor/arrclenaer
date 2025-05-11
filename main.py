@@ -16,90 +16,75 @@ RADARR_URL = os.getenv('RADARR_URL')
 RADARR_API_KEY = os.getenv('RADARR_API_KEY')
 YEAR_THRESHOLD = int(os.getenv('YEAR_THRESHOLD', 2024))
 TRANSMISSION_URL = os.getenv('TRANSMISSION_URL', 'http://localhost:9091')
-TRANSMISSION_USER = os.getenv('TRANSMISSION_USER', 'usuario')
-TRANSMISSION_PASSWORD = os.getenv('TRANSMISSION_PASSWORD', 'contraseña')
+TRANSMISSION_USER = os.getenv('TRANSMISSION_USER', 'usuario')  # Usuario de Transmission
+TRANSMISSION_PASSWORD = os.getenv('TRANSMISSION_PASSWORD', 'contraseña')  # Contraseña de Transmission
 
 HEADERS = {
     'X-Api-Key': RADARR_API_KEY,
     'Content-Type': 'application/json'
 }
 
+# Función para obtener el X-Transmission-Session-Id
+def get_session_id():
+    response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json={
+        "method": "torrent-get",
+        "arguments": {"fields": ["id", "name"]}
+    }, auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD))
+    
+    if response.status_code == 409:
+        # Extraemos el nuevo Session-Id de la cabecera
+        session_id = response.headers['X-Transmission-Session-Id']
+        return session_id
+    return None
+
+# Función para obtener la lista de torrents
+def get_torrents(session_id):
+    response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json={
+        "method": "torrent-get",
+        "arguments": {"fields": ["id", "name"]}
+    }, headers={"X-Transmission-Session-Id": session_id}, auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD))
+    
+    if response.status_code == 200:
+        return response.json().get('arguments', {}).get('torrents', [])
+    return []
+
+# Función para normalizar el nombre de los torrents y las películas
+def normalize_title(title):
+    # Convertir a minúsculas, eliminar caracteres no alfanuméricos, y eliminar información adicional
+    title = re.sub(r'[^a-zA-Z0-9\s]', '', title.lower())  # Eliminar caracteres especiales
+    title = re.sub(r'\s+', ' ', title)  # Normalizar espacios
+    return title.strip()
+
+# Función para eliminar un torrent
+def remove_torrent(torrent_id, session_id):
+    response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json={
+        "method": "torrent-remove",
+        "arguments": {
+            "ids": [torrent_id],
+            "delete-local-data": True
+        }
+    }, headers={"X-Transmission-Session-Id": session_id}, auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD))
+    
+    if response.status_code == 200:
+        logging.info(f"Torrent con ID {torrent_id} eliminado correctamente de Transmission.")
+    else:
+        logging.warning(f"No se pudo eliminar el torrent con ID {torrent_id}.")
+
+# Función para obtener las películas de Radarr
 def get_movies():
     response = requests.get(f"{RADARR_URL}/api/v3/movie", headers=HEADERS)
     response.raise_for_status()
     return response.json()
 
-def add_to_exclusion(tmdb_id, title, year):
-    if not tmdb_id or not year:
-        logging.warning(f"No se puede excluir '{title}' porque falta tmdbId o año.")
-        return
-
-    payload = {
-        "tmdbId": tmdb_id,
-        "movieTitle": title,
-        "movieYear": year
-    }
-
+# Función para agregar una película a la lista de exclusión en Radarr
+def add_to_exclusion(tmdb_id, title):
     logging.info(f"Añadiendo '{title}' a la lista de exclusión")
-    response = requests.post(f"{RADARR_URL}/api/v3/exclusions", json=payload, headers=HEADERS)
-
-    if response.status_code not in (200, 201):
+    payload = {"tmdbId": tmdb_id}
+    response = requests.post(f"{RADARR_URL}/api/v3/importlistexclusion", json=payload, headers=HEADERS)
+    if response.status_code != 201:
         logging.warning(f"Error al excluir '{title}': {response.text}")
 
-def cancel_torrent_download(title):
-    logging.info(f"Comprobando si '{title}' está en descarga en Transmission...")
-
-    payload = {
-        "method": "torrent-get",
-        "arguments": {"fields": ["id", "name"]}
-    }
-
-    auth = HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD)
-    response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json=payload, auth=auth)
-
-    if response.status_code == 409:
-        session_id = response.headers.get("X-Transmission-Session-Id")
-        if not session_id:
-            logging.warning("No se pudo obtener el Session ID de Transmission.")
-            return
-
-        headers = {"X-Transmission-Session-Id": session_id}
-        response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json=payload, auth=auth, headers=headers)
-
-        if response.status_code != 200:
-            logging.warning("No se pudo obtener la lista de torrents de Transmission tras reintento.")
-            return
-    elif response.status_code == 200:
-        session_id = response.headers.get("X-Transmission-Session-Id")
-        headers = {"X-Transmission-Session-Id": session_id}
-    else:
-        logging.warning("No se pudo obtener la lista de torrents de Transmission.")
-        return
-
-    torrents = response.json().get('arguments', {}).get('torrents', [])
-    title_lower = title.lower()
-
-    for torrent in torrents:
-        if re.search(r'\b' + re.escape(title_lower) + r'\b', torrent['name'].lower()):
-            logging.info(f"Eliminando torrent de '{title}' de Transmission (ID: {torrent['id']})")
-            response = requests.post(
-                f"{TRANSMISSION_URL}/transmission/rpc",
-                json={
-                    "method": "torrent-remove",
-                    "arguments": {
-                        "ids": [torrent['id']],
-                        "delete-local-data": True
-                    }
-                },
-                auth=auth,
-                headers=headers
-            )
-            if response.status_code == 200:
-                logging.info(f"Torrent de '{title}' eliminado correctamente de Transmission")
-            else:
-                logging.warning(f"No se pudo eliminar el torrent de '{title}'")
-            break
-
+# Función para eliminar una película en Radarr
 def delete_movie(movie_id, title):
     logging.info(f"Eliminando película y archivos: '{title}' (ID: {movie_id})")
     response = requests.delete(
@@ -111,20 +96,51 @@ def delete_movie(movie_id, title):
     else:
         cancel_torrent_download(title)
 
+# Función para cancelar la descarga de torrents en Transmission
+def cancel_torrent_download(title):
+    logging.info(f"Comprobando si '{title}' está en descarga en Transmission...")
+    
+    # Obtener la sesión de Transmission (session_id)
+    session_id = get_session_id()
+    if session_id is None:
+        logging.warning("No se pudo obtener el Session ID de Transmission.")
+        return
+
+    # Obtener todos los torrents activos
+    torrents = get_torrents(session_id)
+    
+    if torrents:
+        # Normalizar el nombre de la película
+        normalized_title = normalize_title(title)
+
+        for torrent in torrents:
+            # Normalizar el nombre del torrent y compararlo con el nombre de la película
+            normalized_torrent_name = normalize_title(torrent['name'])
+
+            # Realizamos la comparación entre los nombres normalizados
+            if normalized_title in normalized_torrent_name:
+                logging.info(f"Eliminando torrent de '{title}' de Transmission (ID: {torrent['id']})")
+                # Eliminar el torrent de Transmission
+                remove_torrent(torrent['id'], session_id)
+                break
+    else:
+        logging.warning("No se encontraron torrents activos en Transmission.")
+
+# Función principal
 def run():
     logging.info("⏳ Iniciando revisión de películas...")
     try:
         movies = get_movies()
         removed = 0
         for movie in movies:
-            year = movie.get("year")
-            if year and year < YEAR_THRESHOLD:
+            year = movie.get("year", 9999)
+            if year < YEAR_THRESHOLD:
                 title = movie.get("title", "Desconocida")
                 tmdb_id = movie.get("tmdbId")
                 movie_id = movie.get("id")
 
                 delete_movie(movie_id, title)
-                add_to_exclusion(tmdb_id, title, year)
+                add_to_exclusion(tmdb_id, title)
                 removed += 1
 
         logging.info(f"✅ Revisión completada. {removed} películas eliminadas.")
