@@ -2,6 +2,7 @@ import os
 import requests
 import logging
 import re
+from requests.auth import HTTPBasicAuth
 
 # --- Configuración de logging ---
 logging.basicConfig(
@@ -15,7 +16,8 @@ RADARR_URL = os.getenv('RADARR_URL')
 RADARR_API_KEY = os.getenv('RADARR_API_KEY')
 YEAR_THRESHOLD = int(os.getenv('YEAR_THRESHOLD', 2024))
 TRANSMISSION_URL = os.getenv('TRANSMISSION_URL', 'http://localhost:9091')
-TRANSMISSION_API_KEY = os.getenv('TRANSMISSION_API_KEY')
+TRANSMISSION_USER = os.getenv('TRANSMISSION_USER', 'usuario')  # Usuario de Transmission
+TRANSMISSION_PASSWORD = os.getenv('TRANSMISSION_PASSWORD', 'contraseña')  # Contraseña de Transmission
 
 HEADERS = {
     'X-Api-Key': RADARR_API_KEY,
@@ -47,12 +49,13 @@ def delete_movie(movie_id, title):
 
 def cancel_torrent_download(title):
     logging.info(f"Comprobando si '{title}' está en descarga en Transmission...")
+    
     # Obtener todos los torrents activos
     params = {'fields': 'id,name'}
     response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json={
         "method": "torrent-get",
         "arguments": params
-    }, headers={'X-Transmission-Session-Id': TRANSMISSION_API_KEY})
+    }, auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD))
     
     if response.status_code == 200:
         torrents = response.json().get('arguments', {}).get('torrents', [])
@@ -71,7 +74,7 @@ def cancel_torrent_download(title):
                         "ids": [torrent['id']],
                         "delete-local-data": True
                     }
-                }, headers={'X-Transmission-Session-Id': TRANSMISSION_API_KEY})
+                }, auth=HTTPBasicAuth(TRANSMISSION_USER, TRANSMISSION_PASSWORD))
                 
                 if response.status_code == 200:
                     logging.info(f"Torrent de '{title}' eliminado correctamente de Transmission")
