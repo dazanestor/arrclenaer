@@ -10,16 +10,18 @@ WORKDIR /app
 COPY main.py .
 COPY start.sh .
 
+# Cambiar permisos de start.sh como root
+RUN chmod +x start.sh
+
 # Cambiar al usuario no root
 USER appuser
 
-# Actualizar pip y crear un entorno virtual dentro del directorio del usuario
+# Crear un entorno virtual
 RUN python -m venv /home/appuser/venv
+
+# Actualizar pip y instalar las dependencias en el entorno virtual
 RUN /home/appuser/venv/bin/pip install --upgrade pip
 RUN /home/appuser/venv/bin/pip install requests
-
-# Dar permisos de ejecución a start.sh
-RUN chmod +x start.sh
 
 # Usar el entorno virtual para ejecutar start.sh
 CMD ["/home/appuser/venv/bin/python", "start.sh"]
