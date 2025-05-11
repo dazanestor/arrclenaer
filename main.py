@@ -77,12 +77,17 @@ def get_movies():
     return response.json()
 
 # Función para agregar una película a la lista de exclusión en Radarr
-def add_to_exclusion(tmdb_id, title):
-    logging.info(f"Añadiendo '{title}' a la lista de exclusión")
-    payload = {"tmdbId": tmdb_id}
+def add_to_exclusion(tmdb_id, title, movie_year):
+    logging.info(f"Añadiendo '{title}' (Año: {movie_year}) a la lista de exclusión")
+    payload = {
+        "tmdbId": tmdb_id,
+        "movieYear": movie_year
+    }
     response = requests.post(f"{RADARR_URL}/api/v3/importlistexclusion", json=payload, headers=HEADERS)
     if response.status_code != 201:
         logging.warning(f"Error al excluir '{title}': {response.text}")
+    else:
+        logging.info(f"'{title}' excluida correctamente.")
 
 # Función para eliminar una película en Radarr
 def delete_movie(movie_id, title):
@@ -139,10 +144,14 @@ def run():
                 tmdb_id = movie.get("tmdbId")
                 movie_id = movie.get("id")
 
-                delete_movie(movie_id, title)
-                add_to_exclusion(tmdb_id, title)
-                removed += 1
-
+                # Solo eliminar y excluir si la película tiene tmdb_id y movie_year disponibles
+                if tmdb_id and year:
+                    delete_movie(movie_id, title)
+                    add_to_exclusion(tmdb_id, title, year)
+                    removed += 1
+                else:
+                    logging.warning(f"No se pudo excluir o eliminar '{title}' debido a falta de datos.")
+        
         logging.info(f"✅ Revisión completada. {removed} películas eliminadas.")
     except Exception as e:
         logging.error(f"❌ Error general: {e}")
