@@ -23,5 +23,5 @@ RUN python -m venv /home/appuser/venv
 RUN /home/appuser/venv/bin/pip install --upgrade pip
 RUN /home/appuser/venv/bin/pip install requests
 
-# Usar el entorno virtual para ejecutar start.sh
-CMD ["/home/appuser/venv/bin/python", "start.sh"]
+# Usar el entorno virtual para ejecutar start.sh con Bash
+CMD ["/bin/bash", "start.sh"]
