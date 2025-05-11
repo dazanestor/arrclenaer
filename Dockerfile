@@ -1,15 +1,25 @@
 FROM python:3.11-slim
 
+# Crear un usuario no root
+RUN useradd -m appuser
+
+# Establecer el directorio de trabajo
 WORKDIR /app
 
+# Copiar archivos necesarios
 COPY main.py .
 COPY start.sh .
 
-RUN pip install --upgrade pip
+# Cambiar al usuario no root
+USER appuser
 
-RUN python -m venv /venv
-RUN /venv/bin/pip install requests
+# Actualizar pip y crear un entorno virtual dentro del directorio del usuario
+RUN python -m venv /home/appuser/venv
+RUN /home/appuser/venv/bin/pip install --upgrade pip
+RUN /home/appuser/venv/bin/pip install requests
 
+# Dar permisos de ejecución a start.sh
 RUN chmod +x start.sh
 
-CMD ["/venv/bin/python", "start.sh"]
+# Usar el entorno virtual para ejecutar start.sh
+CMD ["/home/appuser/venv/bin/python", "start.sh"]
