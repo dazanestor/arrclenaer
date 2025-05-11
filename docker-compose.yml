@@ -8,5 +8,6 @@ services:
       - YEAR_THRESHOLD=2024
       - RUN_INTERVAL_HOURS=12
       - TRANSMISSION_URL=
-      - TRANSMISSION_API_KEY
+      - TRANSMISSION_USER=admin
+      - TRANSMISSION_PASSWORD=
     restart: unless-stopped
