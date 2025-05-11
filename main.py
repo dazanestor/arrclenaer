@@ -1,9 +1,9 @@
 import os
 import requests
 import logging
-from datetime import datetime
+import re
 
-# --- Configurar logging ---
+# --- Configuración de logging ---
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s - %(message)s',
@@ -14,6 +14,8 @@ logging.basicConfig(
 RADARR_URL = os.getenv('RADARR_URL')
 RADARR_API_KEY = os.getenv('RADARR_API_KEY')
 YEAR_THRESHOLD = int(os.getenv('YEAR_THRESHOLD', 2024))
+TRANSMISSION_URL = os.getenv('TRANSMISSION_URL', 'http://localhost:9091')
+TRANSMISSION_API_KEY = os.getenv('TRANSMISSION_API_KEY')
 
 HEADERS = {
     'X-Api-Key': RADARR_API_KEY,
@@ -40,6 +42,44 @@ def delete_movie(movie_id, title):
     )
     if response.status_code != 200:
         logging.warning(f"Error al eliminar '{title}': {response.text}")
+    else:
+        cancel_torrent_download(title)
+
+def cancel_torrent_download(title):
+    logging.info(f"Comprobando si '{title}' está en descarga en Transmission...")
+    # Obtener todos los torrents activos
+    params = {'fields': 'id,name'}
+    response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json={
+        "method": "torrent-get",
+        "arguments": params
+    }, headers={'X-Transmission-Session-Id': TRANSMISSION_API_KEY})
+    
+    if response.status_code == 200:
+        torrents = response.json().get('arguments', {}).get('torrents', [])
+        
+        # Convertir el nombre de la película a minúsculas para hacer la comparación insensible al caso
+        title_lower = title.lower()
+        
+        for torrent in torrents:
+            # Buscar el nombre de la película en el nombre completo del torrent de manera flexible
+            if re.search(r'\b' + re.escape(title_lower) + r'\b', torrent['name'].lower()):
+                logging.info(f"Eliminando torrent de '{title}' de Transmission (ID: {torrent['id']})")
+                # Eliminar el torrent de Transmission
+                response = requests.post(f"{TRANSMISSION_URL}/transmission/rpc", json={
+                    "method": "torrent-remove",
+                    "arguments": {
+                        "ids": [torrent['id']],
+                        "delete-local-data": True
+                    }
+                }, headers={'X-Transmission-Session-Id': TRANSMISSION_API_KEY})
+                
+                if response.status_code == 200:
+                    logging.info(f"Torrent de '{title}' eliminado correctamente de Transmission")
+                else:
+                    logging.warning(f"No se pudo eliminar el torrent de '{title}' en Transmission")
+                break
+    else:
+        logging.warning("No se pudo obtener la lista de torrents de Transmission")
 
 def run():
     logging.info("⏳ Iniciando revisión de películas...")
