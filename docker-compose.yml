@@ -1,0 +1,10 @@
+services:
+  radarr-cleaner:
+    build: .
+    container_name: radarr-cleaner
+    environment:
+      - RADARR_URL=http://192.168.1.100:7878
+      - RADARR_API_KEY=TU_API_KEY
+      - YEAR_THRESHOLD=2024
+      - RUN_INTERVAL_HOURS=12
+    restart: unless-stopped
