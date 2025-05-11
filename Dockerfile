@@ -19,9 +19,9 @@ USER appuser
 # Crear un entorno virtual
 RUN python -m venv /home/appuser/venv
 
-# Actualizar pip y instalar las dependencias en el entorno virtual
+# Instalar las dependencias en el entorno virtual
 RUN /home/appuser/venv/bin/pip install --upgrade pip
 RUN /home/appuser/venv/bin/pip install requests
 
 # Usar el entorno virtual para ejecutar start.sh con Bash
-CMD ["/bin/bash", "start.sh"]
+CMD ["/bin/bash", "-c", "source /home/appuser/venv/bin/activate && python main.py"]
